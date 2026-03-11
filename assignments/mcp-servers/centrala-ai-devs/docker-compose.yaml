@@ -1,0 +1,13 @@
+services:
+  centrala:
+    image: fastmcp:3.13
+    ports:
+      - 8001:8000
+    environment:
+      HUB_URL: ${HUB_URL:-https://hub.ag3nts.org/}
+      HUB_API_KEY: ${HUB_API_KEY}
+      HOST_OUTPUT_DIR: ${HOST_OUTPUT_DIR}
+    volumes:
+      - ./src:/app/src
+      - ${HOST_OUTPUT_DIR}:/app/output:rw
+    command: "python src/server.py --verbose --host 0.0.0.0 --port 8000"
