@@ -1,3 +1,6 @@
-agno
-fastapi
-uvicorn
+agno==2.5.9
+fastapi==0.135.1
+mcp==1.26.0
+openai==2.28.0
+SQLAlchemy==2.0.48
+uvicorn==0.41.0

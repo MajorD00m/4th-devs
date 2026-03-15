@@ -5,4 +5,18 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+      OPENAI_FLEX: ${OPENAI_FLEX}
+      MCP_SERVER_URL: ${MCP_SERVER_URL}
+    volumes:
+      - ./src/:/app/src/
     restart: unless-stopped
+    networks:
+      - centrala-ai-devs_default
+
+networks:
+  centrala-ai-devs_default:
+    name: centrala-ai-devs_default
+    external: true
