@@ -9,11 +9,14 @@ from urllib.parse import quote, quote_plus
 import os
 import httpx
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 import fastmcp.exceptions
 from fastmcp.server.auth import StaticTokenVerifier
 from fastmcp.utilities.logging import get_logger
 from mcp.types import ToolAnnotations
+
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 # Configuration from environment variables
 HUB_URL = os.getenv("HUB_URL", "").rstrip('/')
@@ -22,6 +25,7 @@ OUTPUT_DIR = "/app/output"
 HOST_OUTPUT_DIR = os.getenv("HOST_OUTPUT_DIR", "")
 
 logger = get_logger("AIDevs")
+
 
 def get_verifier():
     if MCP_STATIC_KEY := os.getenv("MCP_STATIC_KEY", ""):
@@ -38,8 +42,21 @@ def get_verifier():
     else:
         return None
 
+
 # Initialize FastMCP server
-mcp = FastMCP("AI Devs Centrala", auth=get_verifier())
+# mcp = FastMCP("AI Devs Centrala", auth=get_verifier())
+mcp = FastMCP("AI Devs Centrala")
+
+middleware = [
+    Middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        # allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"]
+    )
+]
+
 
 @mcp.tool(tags={'always'})
 async def send_answer(task: str, answer: str) -> dict:
@@ -55,7 +72,7 @@ async def send_answer(task: str, answer: str) -> dict:
         "task": task,
         "answer": answer
     }
-    
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -64,35 +81,40 @@ async def send_answer(task: str, answer: str) -> dict:
                 timeout=30.0
             )
             response.raise_for_status()
-            
+
             return {
                 "success": True,
                 "status_code": response.status_code,
-                "response": response.json()
+                "response": response.json(),
+                "headers": dict(response.headers)
             }
-    
+
     except httpx.HTTPStatusError as e:
         return {
             "success": False,
             "error": "HTTP error",
             "status_code": e.response.status_code,
             "message": str(e),
-            "response": e.response.text
+            "response": e.response.text,
+            "headers": dict(response.headers)
         }
-    
+
     except httpx.RequestError as e:
         return {
             "success": False,
             "error": "Request error",
-            "message": str(e)
+            "message": str(e),
+            "headers": dict(response.headers)
         }
-    
+
     except Exception as e:
         return {
             "success": False,
             "error": "Unexpected error",
-            "message": str(e)
+            "message": str(e),
+            "headers": dict(response.headers)
         }
+
 
 @mcp.tool(tags={'s01e01'})
 async def download_data_file(file_path: str):
@@ -150,10 +172,11 @@ async def person_sightings(name: str, surname: str):
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=payload, timeout=30.0)
 
-        if not(200 <= response.status_code < 300):
+        if not (200 <= response.status_code < 300):
             raise fastmcp.exceptions.ToolError(response.text)
 
         return response.text
+
 
 @mcp.tool(tags={'s01e02'}, annotations=ToolAnnotations(readOnlyHint=True))
 async def person_accesslevel(name: str, surname: str, birth_year: int):
@@ -168,10 +191,39 @@ async def person_accesslevel(name: str, surname: str, birth_year: int):
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=payload, timeout=30.0)
 
-        if not(200 <= response.status_code < 300):
+        if not (200 <= response.status_code < 300):
             raise fastmcp.exceptions.ToolError(response.text)
 
         return response.text
+
+
+@mcp.tool(tags={'s01e04'})
+async def dokumentacja_przesylek_konduktorskich(file_name: str = 'index.md'):
+    """  Pobieranie plikow dokumentacji przesylek konduktorskich
+
+    :param file_name: Plik dokumentacji, domyslnie index.md
+    """
+    url = f"{HUB_URL}/dane/doc/{file_name}"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=30.0)
+
+        if not (200 <= response.status_code < 300):
+            raise fastmcp.exceptions.ResourceError(response.text)
+
+        target_file = pathlib.Path(OUTPUT_DIR, file_name)
+        target_file.write_bytes(response.content)
+
+        ai_response = {"file_name": file_name}
+
+        if HOST_OUTPUT_DIR:
+            ai_response["host_path"] = str(pathlib.Path(HOST_OUTPUT_DIR, file_name))
+
+        if content_type := response.headers.get("content-type", ""):
+            if content_type.lower().startswith("text/"):
+                ai_response['file_content'] = response.text
+
+        return ai_response
 
 
 @mcp.resource("data://{file_path*}", name="data", tags={'s01e01'})
@@ -215,14 +267,15 @@ async def package_status(package_id: str):
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=payload, timeout=30.0)
 
-        if not(200 <= response.status_code < 300):
+        if not (200 <= response.status_code < 300):
             raise fastmcp.exceptions.ToolError(response.text)
 
         return response.text
 
+
 @mcp.tool(tags={'s01e03'})
 async def package_redirect(package_id: str, destination_code: str, security_code: str):
-    """ Zwraca informacje o statusie i lokalizacji paczki. """
+    """ Przekierowuje paczkę zgonie z podanym kodem celu """
     url = f"{HUB_URL}/api/packages"
     payload = {
         "apikey": HUB_API_KEY,
@@ -234,14 +287,90 @@ async def package_redirect(package_id: str, destination_code: str, security_code
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=payload, timeout=30.0)
 
-        if not(200 <= response.status_code < 300):
+        if not (200 <= response.status_code < 300):
             raise fastmcp.exceptions.ToolError(response.text)
 
         return response.text
 
 
+@mcp.tool(tags={'s01e05'})
+async def railway_api(
+        # api_call: dict[str, str],
+        api_call,
+        ctx: Context,
+        # delay_send_seconds: int = 0
+) -> dict:
+    """ Send an request to railway management api.
+    :arg api_call: Structured api call parameters
+    """
+    # :arg delay_send_seconds: how long should tool wait before calling api
+    body = {
+        "apikey": HUB_API_KEY,
+        "task": "railway",
+        "answer": api_call
+    }
 
-if __name__ == "__main__":
+    # if delay_send_seconds:
+    #     step_length = 5
+    #     steps = ceil(delay_send_seconds/step_length)
+    #     for step in range(0, steps):
+    #         await ctx.report_progress(progress=step*step_length, total=steps*step_length)
+    #         await asyncio.sleep(step_length)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{HUB_URL}/verify",
+                json=body,
+                timeout=30.0,
+            )
+            if not 200 <= response.status_code < 300:
+                # response.raise_for_status()
+                print(f"Status error: {api_call}")
+                print(f"Status error: {response.headers=}")
+                print(f"Status error: {response.text=}")
+
+                return {
+                    "success": False,
+                    "error": "HTTP error",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                    "headers": dict(response.headers)
+                }
+
+            print(f"Jest cacy: {api_call}")
+            print(f"Jest cacy: {response.headers=}")
+            print(f"Jest cacy: {response.text=}")
+
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "response": response.json(),
+                "headers": dict(response.headers)
+            }
+
+    except httpx.RequestError as e:
+        print(f"RequestError: {str(e)}")
+        print(f"RequestError: {api_call}")
+        return {
+            "success": False,
+            "error": "Request error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
+    except Exception as e:
+        print(f"Exception: {str(e)}")
+        print(f"Unexpected error: {api_call}")
+        return {
+            "success": False,
+            "error": "Unexpected error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
+
+def setup_mcp_tools_scope():
     if not HUB_URL:
         print("HUB_URL not configured")
         print("Please set the HUB_URL environment variable")
@@ -255,5 +384,15 @@ if __name__ == "__main__":
     TASK_TAG = os.getenv('TASK_TAG', '').lower()
     logger.info(f"{TASK_TAG=}")
     mcp.enable(tags={'always', TASK_TAG}, only=True)
+
+setup_mcp_tools_scope()
+
+if __name__ == "__main__":
     # Run the MCP server
-    mcp.run(transport="http", host="0.0.0.0", log_level="DEBUG")
+    # http_app = mcp.http_app(middleware=middleware)
+    app = mcp.http_app(transport="streamable-http")
+
+    mcp.run(transport="streamable-http", host="0.0.0.0", log_level="DEBUG")
+    # mcp.run(transport="http", host="0.0.0.0", log_level="DEBUG")
+else:
+    app = mcp.http_app(transport="streamable-http")
