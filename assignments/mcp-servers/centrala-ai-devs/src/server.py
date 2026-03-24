@@ -116,7 +116,7 @@ async def send_answer(task: str, answer: str) -> dict:
         }
 
 
-@mcp.tool(tags={'s01e01'})
+@mcp.tool(tags={'s01e01', 's02e01'})
 async def download_data_file(file_path: str):
     """ Download file from AI Devs Centrala
     :param file_path: relative url_path on server
@@ -144,7 +144,7 @@ async def download_data_file(file_path: str):
 
         file_sample = ""
         if file_path.endswith((".csv", ".txt")):
-            file_sample = response.text.splitlines()[:10]
+            file_sample = response.text.splitlines()[:200]
         elif file_path.endswith((".json")):
             if len(response.text) < 1000:
                 file_sample = response.text
@@ -362,6 +362,116 @@ async def railway_api(
     except Exception as e:
         print(f"Exception: {str(e)}")
         print(f"Unexpected error: {api_call}")
+        return {
+            "success": False,
+            "error": "Unexpected error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
+
+@mcp.tool(tags={'s02e01'})
+async def categorize_cargo(
+        prompt: str,
+        ctx: Context,
+) -> dict:
+    """ Send an request to railway management api.
+    :arg prompt: Prompt for ai to use in cargo classification with cargo ID, e.g. "Is item ID {id} dangerous? It's description is {description}. Answer DNG or NEU."
+    """
+    body = {
+        "apikey": HUB_API_KEY,
+        "task": "categorize",
+        "answer":
+            {"prompt": prompt}
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{HUB_URL}/verify",
+                json=body,
+                timeout=30.0,
+            )
+            if not 200 <= response.status_code < 300:
+                return {
+                    "success": False,
+                    "error": "HTTP error",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                    "headers": dict(response.headers)
+                }
+
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "response": response.json(),
+                "headers": dict(response.headers)
+            }
+
+    except httpx.RequestError as e:
+        return {
+            "success": False,
+            "error": "Request error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "Unexpected error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
+
+@mcp.tool(tags={'s02e02'})
+async def rotate_tile(
+        tile: str,
+        ctx: Context,
+) -> dict:
+    """ Send an request to railway management api.
+    :arg prompt: Prompt for ai to use in cargo classification with cargo ID, e.g. "Is item ID {id} dangerous? It's description is {description}. Answer DNG or NEU."
+    """
+    body = {
+        "apikey": HUB_API_KEY,
+        "task": "electricity",
+        "answer":
+            {"rotate": tile}
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{HUB_URL}/verify",
+                json=body,
+                timeout=30.0,
+            )
+            if not 200 <= response.status_code < 300:
+                return {
+                    "success": False,
+                    "error": "HTTP error",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                    "headers": dict(response.headers)
+                }
+
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "response": response.json(),
+                "headers": dict(response.headers)
+            }
+
+    except httpx.RequestError as e:
+        return {
+            "success": False,
+            "error": "Request error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
+    except Exception as e:
         return {
             "success": False,
             "error": "Unexpected error",
