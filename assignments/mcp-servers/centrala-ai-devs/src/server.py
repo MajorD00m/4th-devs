@@ -58,29 +58,27 @@ middleware = [
 ]
 
 
-@mcp.tool(tags={'always'})
-async def send_answer(task: str, answer: str) -> dict:
-    """ Send an answer to the AI Devs Hub /verify endpoint for a specific task.
-    Args:
-        task: Name of the task/assignment
-        answer: Answer to submit (format depends on task requirements)
-    Returns:
-        Response from the Hub API
-    """
+async def send_payload_to_hub_verify(task: str, answer: dict | str):
     body = {
         "apikey": HUB_API_KEY,
         "task": task,
         "answer": answer
     }
-
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{HUB_URL}/verify",
                 json=body,
-                timeout=30.0
+                timeout=30.0,
             )
-            response.raise_for_status()
+            if not 200 <= response.status_code < 300:
+                return {
+                    "success": False,
+                    "error": "HTTP error",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                    "headers": dict(response.headers)
+                }
 
             return {
                 "success": True,
@@ -88,16 +86,6 @@ async def send_answer(task: str, answer: str) -> dict:
                 "response": response.json(),
                 "headers": dict(response.headers)
             }
-
-    except httpx.HTTPStatusError as e:
-        return {
-            "success": False,
-            "error": "HTTP error",
-            "status_code": e.response.status_code,
-            "message": str(e),
-            "response": e.response.text,
-            "headers": dict(response.headers)
-        }
 
     except httpx.RequestError as e:
         return {
@@ -114,6 +102,18 @@ async def send_answer(task: str, answer: str) -> dict:
             "message": str(e),
             "headers": dict(response.headers)
         }
+
+
+@mcp.tool(tags={'always'})
+async def send_answer(task: str, answer: str) -> dict:
+    """ Send an answer to the AI Devs Hub /verify endpoint for a specific task.
+    Args:
+        task: Name of the task/assignment
+        answer: Answer to submit (format depends on task requirements)
+    Returns:
+        Response from the Hub API
+    """
+    return await send_payload_to_hub_verify(task, answer)
 
 
 @mcp.tool(tags={'s01e01', 's02e01'})
@@ -304,11 +304,7 @@ async def railway_api(
     :arg api_call: Structured api call parameters
     """
     # :arg delay_send_seconds: how long should tool wait before calling api
-    body = {
-        "apikey": HUB_API_KEY,
-        "task": "railway",
-        "answer": api_call
-    }
+    task = "railway"
 
     # if delay_send_seconds:
     #     step_length = 5
@@ -317,57 +313,7 @@ async def railway_api(
     #         await ctx.report_progress(progress=step*step_length, total=steps*step_length)
     #         await asyncio.sleep(step_length)
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{HUB_URL}/verify",
-                json=body,
-                timeout=30.0,
-            )
-            if not 200 <= response.status_code < 300:
-                # response.raise_for_status()
-                print(f"Status error: {api_call}")
-                print(f"Status error: {response.headers=}")
-                print(f"Status error: {response.text=}")
-
-                return {
-                    "success": False,
-                    "error": "HTTP error",
-                    "status_code": response.status_code,
-                    "response": response.text,
-                    "headers": dict(response.headers)
-                }
-
-            print(f"Jest cacy: {api_call}")
-            print(f"Jest cacy: {response.headers=}")
-            print(f"Jest cacy: {response.text=}")
-
-            return {
-                "success": True,
-                "status_code": response.status_code,
-                "response": response.json(),
-                "headers": dict(response.headers)
-            }
-
-    except httpx.RequestError as e:
-        print(f"RequestError: {str(e)}")
-        print(f"RequestError: {api_call}")
-        return {
-            "success": False,
-            "error": "Request error",
-            "message": str(e),
-            "headers": dict(response.headers)
-        }
-
-    except Exception as e:
-        print(f"Exception: {str(e)}")
-        print(f"Unexpected error: {api_call}")
-        return {
-            "success": False,
-            "error": "Unexpected error",
-            "message": str(e),
-            "headers": dict(response.headers)
-        }
+    return await send_payload_to_hub_verify(task, api_call)
 
 
 @mcp.tool(tags={'s02e01'})
@@ -378,106 +324,24 @@ async def categorize_cargo(
     """ Send an request to railway management api.
     :arg prompt: Prompt for ai to use in cargo classification with cargo ID, e.g. "Is item ID {id} dangerous? It's description is {description}. Answer DNG or NEU."
     """
-    body = {
-        "apikey": HUB_API_KEY,
-        "task": "categorize",
-        "answer":
-            {"prompt": prompt}
-    }
+    task = "categorize"
+    answer = {"prompt": prompt}
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{HUB_URL}/verify",
-                json=body,
-                timeout=30.0,
-            )
-            if not 200 <= response.status_code < 300:
-                return {
-                    "success": False,
-                    "error": "HTTP error",
-                    "status_code": response.status_code,
-                    "response": response.text,
-                    "headers": dict(response.headers)
-                }
-
-            return {
-                "success": True,
-                "status_code": response.status_code,
-                "response": response.json(),
-                "headers": dict(response.headers)
-            }
-
-    except httpx.RequestError as e:
-        return {
-            "success": False,
-            "error": "Request error",
-            "message": str(e),
-            "headers": dict(response.headers)
-        }
-
-    except Exception as e:
-        return {
-            "success": False,
-            "error": "Unexpected error",
-            "message": str(e),
-            "headers": dict(response.headers)
-        }
+    return await send_payload_to_hub_verify(task, answer)
 
 
 @mcp.tool(tags={'s02e02'})
-async def rotate_tile(
+async def rotate_grid_tile_90_deg_clockwise(
         tile: str,
         ctx: Context,
 ) -> dict:
-    """ Send an request to railway management api.
-    :arg prompt: Prompt for ai to use in cargo classification with cargo ID, e.g. "Is item ID {id} dangerous? It's description is {description}. Answer DNG or NEU."
+    """ Rotate .
+    :arg tile: tile position in AxB format, where A is row no, and B is column no, e.g. 1x2
     """
-    body = {
-        "apikey": HUB_API_KEY,
-        "task": "electricity",
-        "answer":
-            {"rotate": tile}
-    }
+    task = "electricity"
+    answer = {"rotate": tile}
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{HUB_URL}/verify",
-                json=body,
-                timeout=30.0,
-            )
-            if not 200 <= response.status_code < 300:
-                return {
-                    "success": False,
-                    "error": "HTTP error",
-                    "status_code": response.status_code,
-                    "response": response.text,
-                    "headers": dict(response.headers)
-                }
-
-            return {
-                "success": True,
-                "status_code": response.status_code,
-                "response": response.json(),
-                "headers": dict(response.headers)
-            }
-
-    except httpx.RequestError as e:
-        return {
-            "success": False,
-            "error": "Request error",
-            "message": str(e),
-            "headers": dict(response.headers)
-        }
-
-    except Exception as e:
-        return {
-            "success": False,
-            "error": "Unexpected error",
-            "message": str(e),
-            "headers": dict(response.headers)
-        }
+    return await send_payload_to_hub_verify(task, answer)
 
 
 def setup_mcp_tools_scope():
