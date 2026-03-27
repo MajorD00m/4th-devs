@@ -335,11 +335,25 @@ async def rotate_grid_tile_90_deg_clockwise(
         tile: str,
         ctx: Context,
 ) -> dict:
-    """ Rotate .
+    """
     :arg tile: tile position in AxB format, where A is row no, and B is column no, e.g. 1x2
     """
     task = "electricity"
     answer = {"rotate": tile}
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s02e03'})
+async def send_logs_to_analysts(
+        logs: str,
+        ctx: Context,
+) -> dict:
+    """
+    :arg logs: multiline, each line is single event
+    """
+    task = "failure"
+    answer = {"logs": logs}
 
     return await send_payload_to_hub_verify(task, answer)
 
