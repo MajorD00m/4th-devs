@@ -352,16 +352,18 @@ async def send_logs_to_analysts(
 
 @mcp.tool(tags={'s02e04'})
 async def zmail_api(
-        action: dict | str = "help"
+        payload: dict
 ) -> dict:
-    """ Send an request to zmail inbox.
-    :param action: send help to get api specification
+    """ Send an request to zmail inbox https://hub.ag3nts.org/api/zmail
+    :param payload: json object, default: {"action": "help"}
     """
     # :arg delay_send_seconds: how long should tool wait before calling api
     zmail_url = "https://hub.ag3nts.org/api/zmail"
+    payload = payload or {"action": "help"}
 
     body = {
-        "action": action
+        "apikey": HUB_API_KEY,
+        **payload
     }
     try:
         async with httpx.AsyncClient() as client:
@@ -383,7 +385,6 @@ async def zmail_api(
                 "success": True,
                 "status_code": response.status_code,
                 "response": response.json(),
-                "headers": dict(response.headers)
             }
 
     except httpx.RequestError as e:
