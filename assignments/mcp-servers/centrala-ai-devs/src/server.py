@@ -306,13 +306,6 @@ async def railway_api(
     # :arg delay_send_seconds: how long should tool wait before calling api
     task = "railway"
 
-    # if delay_send_seconds:
-    #     step_length = 5
-    #     steps = ceil(delay_send_seconds/step_length)
-    #     for step in range(0, steps):
-    #         await ctx.report_progress(progress=step*step_length, total=steps*step_length)
-    #         await asyncio.sleep(step_length)
-
     return await send_payload_to_hub_verify(task, api_call)
 
 
