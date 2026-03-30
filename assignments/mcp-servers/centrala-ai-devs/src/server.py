@@ -350,6 +350,58 @@ async def send_logs_to_analysts(
 
     return await send_payload_to_hub_verify(task, answer)
 
+@mcp.tool(tags={'s02e04'})
+async def zmail_api(
+        action: dict | str = "help"
+) -> dict:
+    """ Send an request to zmail inbox.
+    :param action: send help to get api specification
+    """
+    # :arg delay_send_seconds: how long should tool wait before calling api
+    zmail_url = "https://hub.ag3nts.org/api/zmail"
+
+    body = {
+        "action": action
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                zmail_url,
+                json=body,
+                timeout=30.0,
+            )
+            if not 200 <= response.status_code < 300:
+                return {
+                    "success": False,
+                    "error": "HTTP error",
+                    "status_code": response.status_code,
+                    "response": response.text,
+                    "headers": dict(response.headers)
+                }
+
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "response": response.json(),
+                "headers": dict(response.headers)
+            }
+
+    except httpx.RequestError as e:
+        return {
+            "success": False,
+            "error": "Request error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "Unexpected error",
+            "message": str(e),
+            "headers": dict(response.headers)
+        }
+
 
 def setup_mcp_tools_scope():
     if not HUB_URL:
