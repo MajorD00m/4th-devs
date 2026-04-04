@@ -5,10 +5,13 @@ Provides tools to interact with the AI Devs Hub API
 """
 import json
 import pathlib
-from urllib.parse import quote, quote_plus
+from contextlib import asynccontextmanager
+from urllib.parse import quote
 import os
+
 import httpx
 
+from fastapi import FastAPI
 from fastmcp import FastMCP, Context
 import fastmcp.exceptions
 from fastmcp.server.auth import StaticTokenVerifier
@@ -46,6 +49,7 @@ def get_verifier():
 # Initialize FastMCP server
 # mcp = FastMCP("AI Devs Centrala", auth=get_verifier())
 mcp = FastMCP("AI Devs Centrala")
+
 
 middleware = [
     Middleware(
@@ -404,7 +408,21 @@ async def zmail_api(
         }
 
 
-def setup_mcp_tools_scope():
+@mcp.tool(tags={'s02e05'})
+async def send_instructions_to_drone(
+        instructions: list[str],
+        ctx: Context,
+) -> dict:
+    """
+    :arg instructions: multiline, each line is single event
+    """
+    task = "drone"
+    answer = {"instructions": instructions}
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+async def setup_mcp_tools_scope():
     if not HUB_URL:
         print("HUB_URL not configured")
         print("Please set the HUB_URL environment variable")
@@ -417,16 +435,36 @@ def setup_mcp_tools_scope():
 
     TASK_TAG = os.getenv('TASK_TAG', '').lower()
     logger.info(f"{TASK_TAG=}")
-    mcp.enable(tags={'always', TASK_TAG}, only=True)
+    if TASK_TAG:
+        mcp.enable(tags={'always', TASK_TAG}, only=True)
+    logger.info('Enabled Tools:')
+    for tool in await mcp.list_tools():
+        logger.info(f'Tool: name={tool.name}, parameters={tool.parameters["properties"] if tool.parameters else ""}')
 
-setup_mcp_tools_scope()
+# Your existing lifespan
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    # Startup
+    print("Starting up the app...")
+    await setup_mcp_tools_scope()   # Twoja inicjalizacja
+    # Initialize database, cache, etc.
+    yield
+    # Shutdown
+    print("Shutting down the app...")
+
+
+# Combine both lifespans
+@asynccontextmanager
+async def combined_lifespan(app: FastAPI):
+    # Run both lifespans
+    async with app_lifespan(app):
+        async with mcp_app.lifespan(app):
+            yield
+
+mcp_app = mcp.http_app(transport="streamable-http", middleware=middleware, path='/mcp')
+app = FastAPI(lifespan=combined_lifespan)
+app.mount("/mcp", mcp_app)
 
 if __name__ == "__main__":
-    # Run the MCP server
-    # http_app = mcp.http_app(middleware=middleware)
-    app = mcp.http_app(transport="streamable-http")
-
-    mcp.run(transport="streamable-http", host="0.0.0.0", log_level="DEBUG")
-    # mcp.run(transport="http", host="0.0.0.0", log_level="DEBUG")
-else:
-    app = mcp.http_app(transport="streamable-http")
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
