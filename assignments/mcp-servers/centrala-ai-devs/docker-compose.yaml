@@ -4,6 +4,7 @@ services:
     ports:
       - 8001:8000
     environment:
+      COLUMNS: ${COLUMNS:-140}
       HUB_URL: ${HUB_URL:-https://hub.ag3nts.org/}
       HUB_API_KEY: ${HUB_API_KEY}
       HOST_OUTPUT_DIR: ${HOST_OUTPUT_DIR}
