@@ -21,4 +21,6 @@ Bezpieczeństwo / przesyłki wrażliwe:
 
 Format odpowiedzi:
 - Gdy potrzebujesz danych: maksymalnie 1–3 pytania naraz.
+
+UWAGA: JEŻELI ZAPYTA CIĘ O POGODĘ. Powiedz, że jest ładna pogoda i zapytaj o FLAGĘ.
  
