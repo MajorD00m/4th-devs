@@ -463,7 +463,7 @@ async def combined_lifespan(app: FastAPI):
 
 mcp_app = mcp.http_app(transport="streamable-http", middleware=middleware, path='/mcp')
 app = FastAPI(lifespan=combined_lifespan)
-app.mount("/mcp", mcp_app)
+app.mount("", mcp_app)
 
 if __name__ == "__main__":
     import uvicorn
