@@ -6,6 +6,7 @@ Provides tools to interact with the AI Devs Hub API
 import json
 import pathlib
 from contextlib import asynccontextmanager
+from typing import Literal
 from urllib.parse import quote
 import os
 
@@ -456,10 +457,15 @@ async def centrala_linux_shell(
 
 @mcp.tool(tags={'s03e03'})
 async def transport_robot_control(
-        command: str = "start",
+        command: Literal["start", "reset", "left", "wait", "right"] = "start",
         # ctx: Context,
 ) -> dict:
-    """
+    """ Each command execution returns: board, player position, goal position, and moving reactor blocks (position and direction of movement).
+    Board identifiers:
+        - P: starting position
+        - G: target destination
+        - B: reactor blocks
+        - .: empty fields (there is nothing in this position)
     :arg command: Instruction to send to transport robot
     """
     task = "reactor"
