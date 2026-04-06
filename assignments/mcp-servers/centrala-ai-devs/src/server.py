@@ -61,19 +61,16 @@ middleware = [
     )
 ]
 
-
-async def send_payload_to_hub_verify(task: str, answer: dict | str):
-    body = {
-        "apikey": HUB_API_KEY,
-        "task": task,
-        "answer": answer
-    }
+async def send_payload_to_hub(
+        url: str,
+        payload: dict,
+        timeout: float = 30.0):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{HUB_URL}/verify",
-                json=body,
-                timeout=30.0,
+                url,
+                json=payload,
+                timeout=timeout,
             )
             if not 200 <= response.status_code < 300:
                 return {
@@ -83,13 +80,21 @@ async def send_payload_to_hub_verify(task: str, answer: dict | str):
                     "response": response.text,
                     "headers": dict(response.headers)
                 }
-
-            return {
+            result = {
                 "success": True,
                 "status_code": response.status_code,
                 "response": response.json(),
                 "headers": dict(response.headers)
             }
+            if len(response.text) > 10000:
+                result = {
+                    "success": True,
+                    "status_code": response.status_code,
+                    "response": "Response exceded 10000 characters! Verify instructions, adn try again!",
+                    "headers": dict(response.headers)
+                }
+
+            return result
 
     except httpx.RequestError as e:
         return {
@@ -106,6 +111,16 @@ async def send_payload_to_hub_verify(task: str, answer: dict | str):
             "message": str(e),
             "headers": dict(response.headers)
         }
+
+
+async def send_payload_to_hub_verify(task: str, answer: dict | str, timeout: float = 30.0):
+    body = {
+        "apikey": HUB_API_KEY,
+        "task": task,
+        "answer": answer
+    }
+    url = f"{HUB_URL}/verify"
+    return await send_payload_to_hub(url, body, timeout)
 
 
 @mcp.tool(tags={'always'})
@@ -420,6 +435,40 @@ async def send_instructions_to_drone(
     answer = {"instructions": instructions}
 
     return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s03e02'})
+async def centrala_linux_shell(
+        cmd: str = "help",
+        # ctx: Context,
+) -> dict:
+    """
+    :arg cmd: linux shell command to be executed on centrala linux server
+    """
+    AG3NTS_SHELL_URL = 'https://hub.ag3nts.org/api/shell'
+    payload = {
+        "apikey": HUB_API_KEY,
+        "cmd": cmd
+    }
+
+    return await send_payload_to_hub(AG3NTS_SHELL_URL, payload)
+
+
+@mcp.tool(tags={'s03e03'})
+async def transport_robot_control(
+        command: str = "start",
+        # ctx: Context,
+) -> dict:
+    """
+    :arg command: Instruction to send to transport robot
+    """
+    task = "reactor"
+    answer = {
+        "command": command
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
 
 
 async def setup_mcp_tools_scope():
