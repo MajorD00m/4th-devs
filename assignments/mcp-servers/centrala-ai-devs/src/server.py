@@ -18,6 +18,7 @@ import fastmcp.exceptions
 from fastmcp.server.auth import StaticTokenVerifier
 from fastmcp.utilities.logging import get_logger
 from mcp.types import ToolAnnotations
+from pydantic import BaseModel
 
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
@@ -476,6 +477,36 @@ async def transport_robot_control(
     return await send_payload_to_hub_verify(task, answer)
 
 
+class StockToolDefinition(BaseModel):
+    route: str
+    description: str
+
+
+@mcp.tool(tags={'s03e04'})
+async def initialize_stock_api(
+        base_domain_url: str,
+        tools: list[StockToolDefinition]
+        # ctx: Context,
+) -> dict:
+    """
+    """
+    task = "negotiations"
+    answer = {
+        "tools":
+            [{"URL": f"{base_domain_url}/{tool.route}", "description": tool.description} for tool in tools]
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s03e04'})
+async def test_stock_api(
+        tool_api_url: str,
+        params: dict
+        # ctx: Context,
+) -> dict:
+    """"""
+    return await send_payload_to_hub(tool_api_url, params)
 
 async def setup_mcp_tools_scope():
     if not HUB_URL:

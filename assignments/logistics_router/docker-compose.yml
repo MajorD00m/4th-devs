@@ -10,6 +10,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL}
       OPENAI_FLEX: ${OPENAI_FLEX}
       MCP_SERVER_URL: ${MCP_SERVER_URL}
+      #AGNO_DEBUG: True
     volumes:
       - ./src/:/app/src/
     restart: unless-stopped

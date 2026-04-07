@@ -1,4 +1,6 @@
 agno==2.5.9
+aiofiles
+chromadb
 fastapi==0.135.1
 mcp==1.26.0
 openai==2.28.0

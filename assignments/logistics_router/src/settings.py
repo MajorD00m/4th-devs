@@ -1,0 +1,11 @@
+from __future__ import annotations
+
+import logging
+
+# --- logging to stdout ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
+
+logger = logging.getLogger("myapp")
