@@ -563,6 +563,25 @@ async def any_api_call(
     return await send_payload_to_hub(f"{HUB_URL}{api_path}", payload)
 
 
+@mcp.tool(tags={'s04e01'})
+async def oparational_center_OKO_api(
+        action: str = "help"
+        # ctx: Context,
+) -> dict:
+    """ Operational Center OKO API endpoint
+    :param action: instructions to send to API, default 'help' call first to list available actions
+    :return:
+    """
+    OKO_API_URL = f"{HUB_URL}/verify"
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "okoeditor",
+        "answer": {
+            "action": action
+        }
+    }
+    return await send_payload_to_hub(OKO_API_URL, payload)
+
 
 async def setup_mcp_tools_scope():
     if not HUB_URL:
