@@ -527,6 +527,63 @@ async def setup_mcp_tools_scope():
     for tool in await mcp.list_tools():
         logger.info(f'Tool: name={tool.name}, parameters={tool.parameters["properties"] if tool.parameters else ""}')
 
+@mcp.tool(tags={'s03e05'})
+async def toolsearch(
+        query: str = "I need notes about movement rules and terrain"
+        # ctx: Context,
+) -> dict:
+    """ Discover tools for terrain navigation
+    :param query: A natural‑language query or keyword
+    :return:
+    """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "query": query
+    }
+    result = await send_payload_to_hub(f"{HUB_URL}/api/toolsearch", payload)
+    result["hints"] = [
+        "Any of discovered tools you can call using 'any_api_call' tool"
+    ]
+    return result
+
+@mcp.tool(tags={'s03e05'})
+async def any_api_call(
+        api_path: str,
+        query
+        # ctx: Context,
+) -> dict:
+    """ Call any centrala AI Devs HUB api with any payload you discovered using toolsearch
+    :param query: As given api documentation claimed
+    :return:
+    """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "query": query
+    }
+    return await send_payload_to_hub(f"{HUB_URL}{api_path}", payload)
+
+
+
+async def setup_mcp_tools_scope():
+    if not HUB_URL:
+        print("HUB_URL not configured")
+        print("Please set the HUB_URL environment variable")
+        exit(1)
+
+    if not HUB_API_KEY:
+        print("HUB_API_KEY not configured")
+        print("Please set the HUB_API_KEY environment variable")
+        exit(1)
+
+    TASK_TAG = os.getenv('TASK_TAG', '').lower()
+    logger.info(f"{TASK_TAG=}")
+    if TASK_TAG:
+        mcp.enable(tags={'always', TASK_TAG}, only=True)
+    logger.info('Enabled Tools:')
+    for tool in await mcp.list_tools():
+        logger.info(f'Tool: name={tool.name}, parameters={tool.parameters["properties"] if tool.parameters else ""}')
+
+
 # Your existing lifespan
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
