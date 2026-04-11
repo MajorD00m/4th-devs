@@ -565,22 +565,28 @@ async def any_api_call(
 
 @mcp.tool(tags={'s04e01'})
 async def oparational_center_OKO_api(
-        action: str = "help"
+        answer: dict,
+        apikey: str = 'predefined',
+        task: str = "okoeditor"
         # ctx: Context,
 ) -> dict:
     """ Operational Center OKO API endpoint
-    :param action: instructions to send to API, default 'help' call first to list available actions
-    :return:
+    :param apikey: if kept default or set 'predefined' will be used server environment variable
+    :param task: task name to use
+    :param answer: instructions to send to API, use first '{"action": "help"}' call first to list available actions
     """
+    if apikey == 'predefined':
+        apikey = HUB_API_KEY
     OKO_API_URL = f"{HUB_URL}/verify"
     payload = {
-        "apikey": HUB_API_KEY,
-        "task": "okoeditor",
-        "answer": {
-            "action": action
-        }
+        "apikey": apikey,
+        "task": task,
+        "answer": answer
     }
-    return await send_payload_to_hub(OKO_API_URL, payload)
+    result = await send_payload_to_hub(OKO_API_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return result
 
 
 async def setup_mcp_tools_scope():
