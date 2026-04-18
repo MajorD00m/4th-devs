@@ -6,7 +6,8 @@ Provides tools to interact with the AI Devs Hub API
 import json
 import pathlib
 from contextlib import asynccontextmanager
-from typing import Literal
+from json import JSONDecodeError
+from typing import Literal, Optional
 from urllib.parse import quote
 import os
 
@@ -18,13 +19,14 @@ import fastmcp.exceptions
 from fastmcp.server.auth import StaticTokenVerifier
 from fastmcp.utilities.logging import get_logger
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
 # Configuration from environment variables
 HUB_URL = os.getenv("HUB_URL", "").rstrip('/')
+HUB_VERIFY_URL = os.getenv("HUB_URL", "").rstrip('/') + "/verify"
 HUB_API_KEY = os.getenv("HUB_API_KEY", "")
 OUTPUT_DIR = "/app/output"
 HOST_OUTPUT_DIR = os.getenv("HOST_OUTPUT_DIR", "")
@@ -52,7 +54,6 @@ def get_verifier():
 # mcp = FastMCP("AI Devs Centrala", auth=get_verifier())
 mcp = FastMCP("AI Devs Centrala")
 
-
 middleware = [
     Middleware(
         CORSMiddleware,
@@ -63,10 +64,13 @@ middleware = [
     )
 ]
 
+
 async def send_payload_to_hub(
         url: str,
         payload: dict,
-        timeout: float = 30.0):
+        timeout: float = 30.0,
+        limit_response_to: int = 10000
+):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -82,13 +86,21 @@ async def send_payload_to_hub(
                     "response": response.text,
                     "headers": dict(response.headers)
                 }
-            result = {
-                "success": True,
-                "status_code": response.status_code,
-                "response": response.json(),
-                "headers": dict(response.headers)
-            }
-            if len(response.text) > 10000:
+            try:
+                result = {
+                    "success": True,
+                    "status_code": response.status_code,
+                    "response": response.json(),
+                    "headers": dict(response.headers)
+                }
+            except JSONDecodeError:
+                result = {
+                    "success": True,
+                    "status_code": response.status_code,
+                    "response": response.text,
+                    "headers": dict(response.headers)
+                }
+            if 0 < limit_response_to < len(response.text):
                 result = {
                     "success": True,
                     "status_code": response.status_code,
@@ -371,6 +383,7 @@ async def send_logs_to_analysts(
 
     return await send_payload_to_hub_verify(task, answer)
 
+
 @mcp.tool(tags={'s02e04'})
 async def zmail_api(
         payload: dict
@@ -508,6 +521,7 @@ async def test_stock_api(
     """"""
     return await send_payload_to_hub(tool_api_url, params)
 
+
 async def setup_mcp_tools_scope():
     if not HUB_URL:
         print("HUB_URL not configured")
@@ -527,6 +541,7 @@ async def setup_mcp_tools_scope():
     for tool in await mcp.list_tools():
         logger.info(f'Tool: name={tool.name}, parameters={tool.parameters["properties"] if tool.parameters else ""}')
 
+
 @mcp.tool(tags={'s03e05'})
 async def toolsearch(
         query: str = "I need notes about movement rules and terrain"
@@ -545,6 +560,7 @@ async def toolsearch(
         "Any of discovered tools you can call using 'any_api_call' tool"
     ]
     return result
+
 
 @mcp.tool(tags={'s03e05'})
 async def any_api_call(
@@ -589,6 +605,572 @@ async def oparational_center_OKO_api(
     return result
 
 
+def default_action_help():
+    return {"action": "help"}
+
+
+class WindTurbine(BaseModel):
+    answer: dict = Field(default_factory=default_action_help,
+                         description="instructions to send to API, use first '{\"action\": \"help\"}' call first to list available actions")
+    apikey: str = Field(default_factory=lambda: os.getenv("HUB_API_KEY", ""),
+                        description="default is used server side environment variable")
+    task: str = Field(default="windpower", description="task name to use")
+
+
+@mcp.tool(tags={'s04e02'})
+async def windturbine_api(
+        windturbine_instruction: WindTurbine
+        # ctx: Context,
+) -> dict:
+    """ Wind Turbine API universal endpoint"""
+    result = await send_payload_to_hub(HUB_VERIFY_URL, windturbine_instruction.model_dump())
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+@mcp.tool(tags={'s04e02'})
+async def windturbine_api_start() -> dict:
+    """ Starts a new service window and initializes task state. """
+    windpower_instruction = WindTurbine(
+        answer={
+            "action": "start"
+        }
+    )
+    result = await send_payload_to_hub(HUB_VERIFY_URL, windpower_instruction.model_dump())
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+@mcp.tool(tags={'s04e02'})
+async def windturbine_api_get(
+        param: Literal["weather", "turbinecheck", "powerplantcheck", "documentation"]
+) -> dict:
+    """ Requests task data. For weather, turbinecheck, and powerplantcheck use windturbine_api_getresult to fetch final response.
+    Documentation is returned directly """
+    windpower_instruction = WindTurbine(
+        answer={
+            "action": "get",
+            "param": param
+        }
+    )
+    result = await send_payload_to_hub(HUB_VERIFY_URL, windpower_instruction.model_dump())
+    if "headers" in result:
+        result.pop("headers")
+    if not param == "documentation":
+        result["hints"] = [
+            f"Use {windturbine_api_getresult.__name__} to get actual results"
+        ]
+    return result
+
+
+@mcp.tool(tags={'s04e02'})
+async def windturbine_api_getresult() -> dict:
+    """ Returns one completed queued response with sourceFunction field. Retrieved item is removed from queue. """
+    windpower_instruction = WindTurbine(
+        answer={"action": "getResult"}
+    )
+    result = await send_payload_to_hub(HUB_VERIFY_URL,
+                                       windpower_instruction.model_dump(),
+                                       limit_response_to=0)
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+class WindTurbineConfig(BaseModel):
+    startDate: str
+    startHour: str
+    pitchAngle: float
+    turbineMode: Literal["idle", "production"] = Field(
+        description="'production' enables generation, 'idle' disables turbine. unlockCode is required for every point")
+    unlockCode: str
+
+
+@mcp.tool(tags={'s04e02'})
+async def windturbine_api_config(
+        config: WindTurbineConfig
+) -> dict:
+    """Stores scheduling config point. Accepts single point."""
+    windpower_instruction = WindTurbine(
+        answer={
+            "action": "config",
+            **config.model_dump()
+        }
+    )
+    result = await send_payload_to_hub(HUB_VERIFY_URL, windpower_instruction.model_dump())
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+@mcp.tool(tags={'s04e02'})
+async def windturbine_api_configs(
+        configs: list[WindTurbineConfig]
+) -> dict:
+    """ Stores scheduling config points. Accepts multiple points """
+    windpower_instruction = WindTurbine(
+        answer={
+            "action": "configs",
+            "configs": {
+                f"{config.startDate} {config.startHour}": {
+                    "pitchAngle": config.pitchAngle,
+                    "turbineMode": config.turbineMode,
+                    "unlockCode": config.unlockCode
+                } for config in configs
+            }
+        }
+    )
+    result = await send_payload_to_hub(HUB_VERIFY_URL, windpower_instruction.model_dump())
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_help() -> dict:
+    """ Get help about all domatowo endpoints """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "help"
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+class ErrorApiResponse(BaseModel):
+    success: bool
+    error: str
+    status_code: int
+    response: str
+
+
+class MapTile(BaseModel):
+    label: str
+    symbol: str
+
+
+class MapModel(BaseModel):
+    name: str
+    size: int
+    tiles: dict[str, MapTile]
+    grid: list[list[str]]
+
+
+class MapResponseData(BaseModel):
+    code: int
+    message: str
+    map: MapModel
+
+
+class GetMapApiResponse(BaseModel):
+    success: bool
+    status_code: int
+    response: MapResponseData
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_getMap(
+        symbols: list[str] | None = Field(None, description="[optional] array of 2-char symbols or coordinates (e.g. KS, SZ, B3, C4)")
+) -> GetMapApiResponse | ErrorApiResponse:
+    """ Get MAP of domatowo """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "getMap"
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return GetMapApiResponse(**result) if result["success"] else ErrorApiResponse(**result)
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_callHelicopter(
+        destination: str
+) -> dict:
+    """ Send rescue hellicopter to sector, e.g. F6 """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "callHelicopter",
+            "destination": destination
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+class MoveSuccessResponse(BaseModel):
+    code: int
+    message: str
+    object: str
+    from_: str = Field(..., alias="from")
+    where: str
+    queue_id: str
+    path_steps: int
+    action_points_left: int
+
+
+class MoveSuccessApiResponse(BaseModel):
+    success: bool
+    status_code: int
+    response: MoveSuccessResponse
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_move(
+        object: str,
+        where : str
+) -> MoveSuccessApiResponse | ErrorApiResponse:
+    """ Queues movement of a unit to target field with calculated path (road-only for transporter, shortest orthogonal for scout)
+    :param object: hash
+    :param where: 2 char, sector code, A1..K11
+    :
+    """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "move",
+            "object": object,
+            "where": where
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return MoveSuccessApiResponse(**result) if result["success"] else ErrorApiResponse(**result)
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_inspect(
+        object: str
+) -> dict:
+    """ Performs scout reconnaissance and appends a log entry based on current scout field.
+    :param object: hash (scout)
+    """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "inspect",
+            "object": object
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+from typing import List
+from pydantic import BaseModel
+
+
+class CrewMember(BaseModel):
+    id: str
+    role: str
+
+
+class CreateResponseData(BaseModel):
+    code: int
+    message: str
+    object: str
+    type: str
+    spawn: str
+    crew: List[CrewMember]
+    queue_id: str
+    action_points_left: int
+
+
+class CreateApiResponse(BaseModel):
+    success: bool
+    status_code: int
+    response: CreateResponseData
+
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_create(
+        type: Literal["transporter", "scout"],
+        passengers : int | None = Field(None, description="1-4 (required only for transporter)")
+) -> CreateApiResponse:
+    """ Creates a new transporter or scout unit on the next free spawn slot (A6 -> D6) """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "create",
+            "type": type,
+            "passengers": passengers
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return CreateApiResponse(**result)
+
+
+class SpawnedScout(BaseModel):
+    scout: str
+    where: str
+
+
+class DismountResponse(BaseModel):
+    code: int
+    message: str
+    object: str
+    dismounted: List[str]
+    spawned: List[SpawnedScout]
+    queue_id: str
+    action_points_left: int
+
+
+class DismountApiResponse(BaseModel):
+    success: bool
+    status_code: int
+    response: DismountResponse
+
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_dismount(
+        object: str,
+        passengers : int
+) -> DismountApiResponse | ErrorApiResponse:
+    """ Removes selected number of scouts from transporter and spawns them on free tiles around vehicle.
+    :param object: hash (transporter)
+    :param passengers: 1-4
+    """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "dismount",
+            "object": object,
+            "passengers": passengers
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return DismountApiResponse(**result) if result["success"] else ErrorApiResponse(**result)
+
+
+class ListedObject(BaseModel):
+    typ: str
+    position: str
+    id: str
+
+
+class ObjectsListResponse(BaseModel):
+    code: int
+    message: str
+    objects: List[ListedObject]
+
+
+class ObjectsListApiResponse(BaseModel):
+    success: bool
+    status_code: int
+    response: ObjectsListResponse
+
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_getObjects(
+        symbol: str
+) -> ObjectsListApiResponse | ErrorApiResponse:
+    """ Returns all currently known units with type, position and identifier. """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "getObjects",
+            "symbol": symbol
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return ObjectsListApiResponse(**result) if result["success"] else ErrorApiResponse(**result)
+
+
+class FoundSymbol(BaseModel):
+    symbol: str
+    position: str
+
+
+class SymbolSearchResponse(BaseModel):
+    code: int
+    message: str
+    symbol: str
+    found: List[FoundSymbol]
+
+
+class SymbolSearchApiResponse(BaseModel):
+    success: bool
+    status_code: int
+    response: SymbolSearchResponse
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_searchSymbol(
+        symbol: str
+) -> SymbolSearchApiResponse | ErrorApiResponse:
+    """ Searches clean map for all fields matching the provided 2-character symbol.
+    :param symbol: exactly 2 alphanumeric characters
+    :return:
+    """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "searchSymbol",
+            "symbol": symbol
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return SymbolSearchApiResponse(**result) if result["success"] else ErrorApiResponse(**result)
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_getLogs() -> dict:
+    """ Returns collected inspect log entries """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "getLogs"
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+class ExpenseMeta(BaseModel):
+    type: Optional[str] = None
+    passengers: Optional[int] = None
+    steps: Optional[int] = None
+
+
+class ExpenseEntry(BaseModel):
+    action: str
+    cost: int
+    pointsUsed: int
+    meta: ExpenseMeta
+
+
+class ActionPointsExpensesResponse(BaseModel):
+    code: int
+    message: str
+    expenses: List[ExpenseEntry]
+    action_points_used: int
+    action_points_left: int
+
+
+class ActionPointsExpensesApiResponse(BaseModel):
+    success: bool
+    status_code: int
+    response: ActionPointsExpensesResponse
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_expenses() -> ActionPointsExpensesApiResponse | ErrorApiResponse:
+    """ Returns action points spending history (action name and action cost) """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "expenses"
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return ActionPointsExpensesApiResponse(**result) if result["success"] else ErrorApiResponse(**result)
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_actionCost() -> dict:
+    """ Returns action points cost rules for all operations """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "actionCost"
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+@mcp.tool(tags={'s04e03'})
+async def domatowo_reset() -> dict:
+    """ Resets board state, queue and action points to defaults, then rolls partisan position again """
+    payload = {
+        "apikey": HUB_API_KEY,
+        "task": "domatowo",
+        "answer": {
+            "action": "reset"
+        }
+    }
+    result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
+    if "headers" in result:
+        result.pop("headers")
+    return result
+
+
+class UnlockCodeGenerator(BaseModel):
+    startDate: str
+    startHour: str
+    windMs: float
+    pitchAngle: float
+
+
+@mcp.tool(tags={'s04e02'})
+async def windturbine_api_unlock_code_generator(
+        unlock_command: UnlockCodeGenerator
+) -> dict:
+    """ Generates unlockCode signature for given configuration. Result is asynchronous and must be collected with windturbine_api_getresult """
+    windpower_instruction = WindTurbine(
+        answer={
+            "action": "unlockCodeGenerator",
+            **unlock_command.model_dump()
+        }
+    )
+    result = await send_payload_to_hub(HUB_VERIFY_URL, windpower_instruction.model_dump())
+    if "headers" in result:
+        result.pop("headers")
+    result["hints"] = [
+        f"Collect results using {windturbine_api_getresult.__name__}"
+    ]
+    return result
+
+
+# notes:[
+# 0: "Run start first."
+# 1: "Run turbinecheck before done."
+# 2: "Use getResult for queued outputs."
+# ]
+
 async def setup_mcp_tools_scope():
     if not HUB_URL:
         print("HUB_URL not configured")
@@ -614,7 +1196,7 @@ async def setup_mcp_tools_scope():
 async def app_lifespan(app: FastAPI):
     # Startup
     print("Starting up the app...")
-    await setup_mcp_tools_scope()   # Twoja inicjalizacja
+    await setup_mcp_tools_scope()  # Twoja inicjalizacja
     # Initialize database, cache, etc.
     yield
     # Shutdown
@@ -629,10 +1211,12 @@ async def combined_lifespan(app: FastAPI):
         async with mcp_app.lifespan(app):
             yield
 
+
 mcp_app = mcp.http_app(transport="streamable-http", middleware=middleware, path='/mcp')
 app = FastAPI(lifespan=combined_lifespan)
 app.mount("", mcp_app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
