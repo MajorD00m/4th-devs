@@ -787,6 +787,8 @@ async def domatowo_getMap(
             "action": "getMap"
         }
     }
+    if symbols:
+        payload["answer"]["symbols"] = symbols
     result = await send_payload_to_hub(HUB_VERIFY_URL, payload)
     if "headers" in result:
         result.pop("headers")
