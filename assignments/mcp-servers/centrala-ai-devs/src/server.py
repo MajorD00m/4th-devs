@@ -777,7 +777,8 @@ class GetMapApiResponse(BaseModel):
 
 @mcp.tool(tags={'s04e03'})
 async def domatowo_getMap(
-        symbols: list[str] | None = Field(None, description="[optional] array of 2-char symbols or coordinates (e.g. KS, SZ, B3, C4)")
+        symbols: list[str] | None = Field(None,
+                                          description="[optional] array of 2-char symbols or coordinates (e.g. KS, SZ, B3, C4)")
 ) -> GetMapApiResponse | ErrorApiResponse:
     """ Get MAP of domatowo """
     payload = {
@@ -834,7 +835,7 @@ class MoveSuccessApiResponse(BaseModel):
 @mcp.tool(tags={'s04e03'})
 async def domatowo_move(
         object: str,
-        where : str
+        where: str
 ) -> MoveSuccessApiResponse | ErrorApiResponse:
     """ Queues movement of a unit to target field with calculated path (road-only for transporter, shortest orthogonal for scout)
     :param object: hash
@@ -903,11 +904,10 @@ class CreateApiResponse(BaseModel):
     response: CreateResponseData
 
 
-
 @mcp.tool(tags={'s04e03'})
 async def domatowo_create(
         type: Literal["transporter", "scout"],
-        passengers : int | None = Field(None, description="1-4 (required only for transporter)")
+        passengers: int | None = Field(None, description="1-4 (required only for transporter)")
 ) -> CreateApiResponse:
     """ Creates a new transporter or scout unit on the next free spawn slot (A6 -> D6) """
     payload = {
@@ -946,11 +946,10 @@ class DismountApiResponse(BaseModel):
     response: DismountResponse
 
 
-
 @mcp.tool(tags={'s04e03'})
 async def domatowo_dismount(
         object: str,
-        passengers : int
+        passengers: int
 ) -> DismountApiResponse | ErrorApiResponse:
     """ Removes selected number of scouts from transporter and spawns them on free tiles around vehicle.
     :param object: hash (transporter)
@@ -987,7 +986,6 @@ class ObjectsListApiResponse(BaseModel):
     success: bool
     status_code: int
     response: ObjectsListResponse
-
 
 
 @mcp.tool(tags={'s04e03'})
@@ -1165,6 +1163,151 @@ async def windturbine_api_unlock_code_generator(
         f"Collect results using {windturbine_api_getresult.__name__}"
     ]
     return result
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_help() -> dict:
+    """
+    Returns a compact manual with available actions and parameter examples.
+    """
+    task = "filesystem"
+    answer = {
+        "action": "help"
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_create_file(
+        path: str,
+        content: str
+        # ctx: Context,
+) -> dict:
+    """
+    rules:
+        0: only markdown syntax is accepted in file content
+        1: markdown links must point to existing files
+    :arg path: full path for file to create
+    :arg content: file to content to write
+    Example:
+        path: "/docs/readme"
+        content: "Hello"
+    """
+    task = "filesystem"
+    answer = {
+        "action": "createFile",
+        "path": path,
+        "content": content
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_create_directory(
+        path: str
+        # ctx: Context,
+) -> dict:
+    """
+    Creates a new directory under an existing parent directory.
+    Example:
+        path: "/docs"
+    """
+    task = "filesystem"
+    answer = {
+        "action": "createDirectory",
+        "path": path
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_delete_file(
+        path: str
+        # ctx: Context,
+) -> dict:
+    """
+    Deletes an existing file at the given path.
+    Example:
+        path: "/docs/readme"
+    """
+    task = "filesystem"
+    answer = {
+        "action": "deleteFile",
+        "path": path
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_delete_directory(
+        path: str
+        # ctx: Context,
+) -> dict:
+    """
+    Deletes an existing directory together with all nested files and folders.
+    Example:
+        path: "/docs"
+    """
+    task = "filesystem"
+    answer = {
+        "action": "deleteDirectory",
+        "path": path
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_list_files(
+        path: str = "/"
+        # ctx: Context,
+) -> dict:
+    """
+    Lists files from a directory with their names, creation timestamps and sizes.
+    Example:
+        path: "/docs"
+    """
+    task = "filesystem"
+    answer = {
+        "action": "listFiles",
+        "path": path
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_reset(
+        # ctx: Context,
+) -> dict:
+    """
+    Clears the whole virtual filesystem and restores only the root directory.
+    """
+    task = "filesystem"
+    answer = {
+        "action": "reset"
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
+
+
+@mcp.tool(tags={'s04e04'})
+async def filesystem_done(
+        # ctx: Context,
+) -> dict:
+    """
+    Runs final validation of the filesystem against all task rules.
+    """
+    task = "filesystem"
+    answer = {
+        "action": "done"
+    }
+
+    return await send_payload_to_hub_verify(task, answer)
 
 
 # notes:[
