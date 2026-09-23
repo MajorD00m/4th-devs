@@ -1310,6 +1310,151 @@ async def filesystem_done(
     return await send_payload_to_hub_verify(task, answer)
 
 
+FOOD_WAREHOUSE_CITIES_URL = "https://hub.ag3nts.org/dane/food4cities.json"
+
+
+async def foodwarehouse_request(answer: dict) -> dict:
+    """Send a Food Warehouse command and hide transport-level headers."""
+    result = await send_payload_to_hub_verify("foodwarehouse", answer)
+    result.pop("headers", None)
+    return result
+
+
+@mcp.tool(tags={'s04e05'}, annotations=ToolAnnotations(readOnlyHint=True))
+async def foodwarehouse_help() -> dict:
+    """Returns the Food Warehouse API contract, including signatureGenerator parameters."""
+    return await foodwarehouse_request({"tool": "help"})
+
+
+@mcp.tool(tags={'s04e05'}, annotations=ToolAnnotations(readOnlyHint=True))
+async def foodwarehouse_get_city_requirements() -> dict | list:
+    """Downloads required goods and quantities for each participating city."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(FOOD_WAREHOUSE_CITIES_URL, timeout=30.0)
+        if not 200 <= response.status_code < 300:
+            raise fastmcp.exceptions.ToolError(response.text)
+        try:
+            return response.json()
+        except JSONDecodeError as error:
+            raise fastmcp.exceptions.ToolError("City requirements response is not valid JSON") from error
+
+
+@mcp.tool(tags={'s04e05'}, annotations=ToolAnnotations(readOnlyHint=True))
+async def foodwarehouse_orders_get(order_id: str | None = None) -> dict:
+    """Lists all Food Warehouse orders or returns one order by its optional ID."""
+    answer = {"tool": "orders", "action": "get"}
+    if order_id:
+        answer["id"] = order_id
+    return await foodwarehouse_request(answer)
+
+
+@mcp.tool(tags={'s04e05'})
+async def foodwarehouse_orders_create(
+        title: str,
+        creator_id: int,
+        destination: int,
+        signature: str,
+) -> dict:
+    """Creates an order for one city after its creator, destination, and signature are known."""
+    return await foodwarehouse_request({
+        "tool": "orders",
+        "action": "create",
+        "title": title,
+        "creatorID": creator_id,
+        "destination": destination,
+        "signature": signature,
+    })
+
+
+@mcp.tool(tags={'s04e05'})
+async def foodwarehouse_orders_append(
+        order_id: str,
+        items: dict[str, int],
+) -> dict:
+    """Appends all goods to an order in one batch. Existing goods have their quantity increased."""
+    if not items:
+        raise ValueError("items must contain at least one product")
+    if any(quantity < 1 for quantity in items.values()):
+        raise ValueError("every item quantity must be a positive integer")
+    return await foodwarehouse_request({
+        "tool": "orders",
+        "action": "append",
+        "id": order_id,
+        "items": items,
+    })
+
+
+@mcp.tool(tags={'s04e05'})
+async def foodwarehouse_orders_delete(order_id: str) -> dict:
+    """Deletes an order by ID."""
+    return await foodwarehouse_request({
+        "tool": "orders",
+        "action": "delete",
+        "id": order_id,
+    })
+
+
+@mcp.tool(tags={'s04e05'}, annotations=ToolAnnotations(readOnlyHint=True))
+async def foodwarehouse_database_query(query: str) -> dict:
+    """Runs one read-only SQLite query or schema-inspection command."""
+    normalized_query = query.strip()
+    if normalized_query.endswith(";"):
+        normalized_query = normalized_query[:-1].strip()
+    if ";" in normalized_query:
+        raise ValueError("only one query is allowed")
+
+    lowered_query = normalized_query.lower()
+    first_word = lowered_query.split(maxsplit=1)[0] if lowered_query else ""
+    command_parts = lowered_query.split()
+    is_schema_command = (
+        command_parts == [".tables"]
+        or command_parts == [".schema"]
+        or (len(command_parts) == 2 and command_parts[0] == ".schema")
+    )
+    if not (
+            first_word == "select"
+            or lowered_query == "show tables"
+            or lowered_query.startswith("show create table ")
+            or is_schema_command
+    ):
+        raise ValueError(
+            "only SELECT, SHOW TABLES, SHOW CREATE TABLE, .tables, and .schema queries are allowed"
+        )
+
+    return await foodwarehouse_request({
+        "tool": "database",
+        "query": normalized_query,
+    })
+
+
+@mcp.tool(tags={'s04e05'})
+async def foodwarehouse_signature_generate(
+        login: str,
+        birthday: str,
+        destination: int,
+) -> dict:
+    """Generates a SHA1 order signature for an existing user and target destination."""
+    return await foodwarehouse_request({
+        "tool": "signatureGenerator",
+        "action": "generate",
+        "login": login,
+        "birthday": birthday,
+        "destination": destination,
+    })
+
+
+@mcp.tool(tags={'s04e05'})
+async def foodwarehouse_reset() -> dict:
+    """Restores the initial Food Warehouse order state."""
+    return await foodwarehouse_request({"tool": "reset"})
+
+
+@mcp.tool(tags={'s04e05'})
+async def foodwarehouse_done() -> dict:
+    """Validates all Food Warehouse orders and returns the final result."""
+    return await foodwarehouse_request({"tool": "done"})
+
+
 # notes:[
 # 0: "Run start first."
 # 1: "Run turbinecheck before done."
